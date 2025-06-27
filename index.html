@@ -256,23 +256,30 @@
       snapshot.forEach((childSnapshot) => {
         strategies.push({ key: childSnapshot.key, ...childSnapshot.val() });
       });
-      strategies.forEach((item) => {
-        const div = document.createElement('div');
-        div.className = 'item';
-        div.innerHTML = `<strong>${item.title}</strong><br>${item.content}`;
-        const btn = document.createElement('button');
-        btn.className = 'delete-btn';
-        btn.innerText = '×';
-        btn.title = '삭제';
-        btn.onclick = () => {
-          remove(ref(database, `strategies/${item.key}`));
-          loadStrategies(); // 삭제 후 리스트 갱신
-        };
-        div.appendChild(btn);
-        container.appendChild(div);
-      });
+      renderStrategyList(strategies);
     }, (error) => {
       console.error('Error loading strategies:', error);
+    });
+  }
+
+  function renderStrategyList(strategies) {
+    const container = document.getElementById('strategy-list');
+    container.innerHTML = '';
+    strategies.forEach((item) => {
+      const div = document.createElement('div');
+      div.className = 'item';
+      div.innerHTML = `<strong>${item.title}</strong><br>${item.content}`;
+      const btn = document.createElement('button');
+      btn.className = 'delete-btn';
+      btn.innerText = '×';
+      btn.title = '삭제';
+      btn.onclick = () => {
+        remove(ref(database, `strategies/${item.key}`))
+          .then(() => loadStrategies()) // 삭제 후 갱신
+          .catch((error) => console.error('Error deleting strategy:', error));
+      };
+      div.appendChild(btn);
+      container.appendChild(div);
     });
   }
 
@@ -281,27 +288,37 @@
     container.innerHTML = '';
     onValue(ref(database, `players/${currentSport}`), (snapshot) => {
       console.log('Loading players for', currentSport, ':', snapshot.val());
-      playerPositions = snapshot.val() || [];
-      playerPositions.forEach((item, i) => {
-        const div = document.createElement('div');
-        div.className = 'item';
-        div.textContent = item.name;
-        const btn = document.createElement('button');
-        btn.className = 'delete-btn';
-        btn.innerText = '×';
-        btn.title = '삭제';
-        btn.onclick = () => {
-          playerPositions.splice(i, 1);
-          set(ref(database, `players/${currentSport}`), playerPositions)
-            .then(() => loadPlayers()) // 성공 시 UI 갱신
-            .catch((error) => console.error('Error deleting player:', error));
-        };
-        div.appendChild(btn);
-        container.appendChild(div);
-      });
+      playerPositions = snapshot.val() ? Object.values(snapshot.val()) : [];
+      console.log('playerPositions after load:', playerPositions);
+      renderPlayerList();
       changeDiagram();
     }, (error) => {
       console.error('Error loading players:', error);
+    });
+  }
+
+  function renderPlayerList() {
+    const container = document.getElementById('player-list');
+    container.innerHTML = '';
+    playerPositions.forEach((item, i) => {
+      const div = document.createElement('div');
+      div.className = 'item';
+      div.textContent = item.name;
+      const btn = document.createElement('button');
+      btn.className = 'delete-btn';
+      btn.innerText = '×';
+      btn.title = '삭제';
+      btn.onclick = () => {
+        playerPositions.splice(i, 1);
+        set(ref(database, `players/${currentSport}`), playerPositions)
+          .then(() => {
+            renderPlayerList(); // 즉시 UI 갱신
+            changeDiagram();
+          })
+          .catch((error) => console.error('Error deleting player:', error));
+      };
+      div.appendChild(btn);
+      container.appendChild(div);
     });
   }
 
@@ -488,16 +505,20 @@
       const rect = svg.getBoundingClientRect();
       const x = (parseFloat(currentInput.style.left) / 100) * 600;
       const y = (parseFloat(currentInput.style.top) / 100) * 400;
-      if (editingIndex !== null) {
-        playerPositions[editingIndex] = { name: val, x, y };
-      } else {
-        playerPositions.push({ name: val, x, y });
+      const existing = playerPositions.find(p => p.name === val && p.x === x && p.y === y);
+      if (!existing) {
+        if (editingIndex !== null) {
+          playerPositions[editingIndex] = { name: val, x, y };
+        } else {
+          playerPositions.push({ name: val, x, y });
+        }
       }
     } else if (editingIndex !== null && !val) {
       playerPositions.splice(editingIndex, 1);
     }
     clearInputs();
     changeDiagram(); // 변경된 내용을 즉시 반영
+    savePlayers(); // 즉시 저장
   }
 
   function savePlayers() {
@@ -508,9 +529,9 @@
     const playersRef = ref(database, `players/${currentSport}`);
     set(playersRef, playerPositions.map(p => ({ name: p.name, x: p.x, y: p.y })))
       .then(() => {
-        alert('선수 배치 저장 완료!');
-        loadPlayers();
-        changeDiagram(); // 저장 후 UI 갱신
+        console.log('Players saved:', playerPositions);
+        loadPlayers(); // 저장 후 최신 데이터 로드
+        changeDiagram();
       })
       .catch((error) => console.error('Error saving players:', error));
   }
