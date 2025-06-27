@@ -79,10 +79,6 @@
   button:hover {
     background: #27ae60;
   }
-  button:disabled {
-    background: #bdc3c7;
-    cursor: not-allowed;
-  }
   #diagram-container {
     margin-top: 10px;
     border: 1px solid #ccc;
@@ -212,7 +208,7 @@
 
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js";
-  import { getDatabase, ref, set, onValue, push, remove, update } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-database.js";
+  import { getDatabase, ref, set, onValue, push, remove } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-database.js";
 
   const firebaseConfig = {
     apiKey: "AIzaSyChxi0iCnMhfzZH84bsZpAu6dwu3yfpW44",
@@ -236,7 +232,6 @@
   let currentInput = null;
   let editingIndex = null;
   let svg = null;
-  let isEditing = false; // 편집 상태 플래그
 
   window.onload = () => {
     console.log('Window loaded, initializing...');
@@ -258,11 +253,7 @@
       addItem('strategy');
     });
     document.getElementById('player-save-btn').addEventListener('click', () => {
-      if (!isEditing) {
-        savePlayers();
-      } else {
-        alert('다른 기기에서 편집 중입니다. 저장을 시도하지 마세요.');
-      }
+      savePlayers();
     });
     document.getElementById('sport-select').addEventListener('change', () => {
       currentSport = document.getElementById('sport-select').value;
@@ -349,21 +340,14 @@
     onValue(playersRef, (snapshot) => {
       console.log('Loading players for', currentGender, currentSport, ':', snapshot.val());
       const positions = snapshot.val() ? Object.values(snapshot.val()) : [];
-      const editingStatusRef = ref(database, `edit_status/${currentGender}/${currentSport}`);
-      onValue(editingStatusRef, (statusSnapshot) => {
-        isEditing = statusSnapshot.val() && statusSnapshot.val().isEditing === true;
-        document.getElementById('player-save-btn').disabled = isEditing;
-        if (currentGender === 'male') {
-          malePlayers = positions;
-          renderPlayerList(malePlayers);
-        } else {
-          femalePlayers = positions;
-          renderPlayerList(femalePlayers);
-        }
-        changeDiagram();
-      }, (error) => {
-        console.error('Error loading edit status:', error);
-      });
+      if (currentGender === 'male') {
+        malePlayers = positions;
+        renderPlayerList(malePlayers);
+      } else {
+        femalePlayers = positions;
+        renderPlayerList(femalePlayers);
+      }
+      changeDiagram();
     }, (error) => {
       console.error('Error loading players:', error);
     });
@@ -564,31 +548,20 @@
       currentInput.value = currentPlayers[index].name;
     }
 
-    // 편집 시작 시 상태 설정
-    const editingStatusRef = ref(database, `edit_status/${currentGender}/${currentSport}`);
-    update(editingStatusRef, { isEditing: true, lastEditor: Date.now() })
-      .then(() => {
-        isEditing = true;
-        document.getElementById('player-save-btn').disabled = false; // 편집 중에도 본인 기기 저장 가능
-        currentInput.addEventListener('keydown', (e) => {
-          if (e.key === 'Enter') {
-            saveTemporaryInput();
-          }
-          if (e.key === 'Escape') {
-            clearInputs();
-            update(editingStatusRef, { isEditing: false });
-            isEditing = false;
-            document.getElementById('player-save-btn').disabled = false;
-          }
-        });
-        currentInput.addEventListener('blur', () => {
-          saveTemporaryInput();
-        });
+    currentInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        saveTemporaryInput();
+      }
+      if (e.key === 'Escape') {
+        clearInputs();
+      }
+    });
+    currentInput.addEventListener('blur', () => {
+      saveTemporaryInput();
+    });
 
-        container.appendChild(currentInput);
-        currentInput.focus();
-      })
-      .catch((error) => console.error('Error setting edit status:', error));
+    container.appendChild(currentInput);
+    currentInput.focus();
   }
 
   function saveTemporaryInput() {
@@ -611,6 +584,7 @@
       currentPlayers.splice(editingIndex, 1);
     }
     clearInputs();
+    changeDiagram();
     savePlayers();
   }
 
@@ -621,13 +595,9 @@
       return;
     }
     const playersRef = ref(database, `players/${currentGender}/${currentSport}`);
-    const editingStatusRef = ref(database, `edit_status/${currentGender}/${currentSport}`);
     set(playersRef, currentPlayers.map(p => ({ name: p.name, x: p.x, y: p.y })))
       .then(() => {
         console.log(`${currentGender} players saved for ${currentSport}:`, currentPlayers);
-        update(editingStatusRef, { isEditing: false });
-        isEditing = false;
-        document.getElementById('player-save-btn').disabled = false;
         loadPlayers();
         changeDiagram();
       })
