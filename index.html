@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>스포츠리그 작전판</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pretendard@2.3.3/dist/web/static/pretendard.css" />
+<style>
+  body {
+    font-family: 'Pretendard', sans-serif, sans-serif;
+    background: #f0f2f5;
+    margin: 0;
+    padding: 10px;
+  }
+  h1 {
+    color: #2c3e50;
+    margin-bottom: 20px;
+    font-size: 24px;
+  }
+  .board {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+  }
+  .column {
+    background: white;
+    border-radius: 12px;
+    padding: 15px;
+    width: 100%;
+    max-width: 600px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+    box-sizing: border-box;
+  }
+  .column h2 {
+    margin-top: 0;
+    font-size: 18px;
+  }
+  .add-form {
+    margin-top: 10px;
+  }
+  select, textarea, button {
+    width: 100%;
+    padding: 8px;
+    margin: 5px 0;
+    border-radius: 6px;
+    border: 1px solid #ccc;
+    font-size: 14px;
+    box-sizing: border-box;
+  }
+  button {
+    background: #2ecc71;
+    color: white;
+    border: none;
+    cursor: pointer;
+    user-select: none;
+  }
+  button:hover {
+    background: #27ae60;
+  }
+  #diagram-container {
+    margin-top: 10px;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    background: #fff;
+    position: relative;
+    width: 100%;
+    max-width: 600px;
+    height: 400px;
+    user-select: none;
+  }
+  svg {
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+  .name-input {
+    position: absolute;
+    background: rgba(255,255,255,0.95);
+    border: 1px solid #888;
+    border-radius: 4px;
+    padding: 2px 6px;
+    font-size: 12px;
+    transform: translate(-50%, -50%);
+    z-index: 20;
+    min-width: 60px;
+    box-sizing: border-box;
+  }
+  .name-label {
+    position: absolute;
+    background: rgba(46, 204, 113, 0.85);
+    color: white;
+    padding: 2px 6px;
+    font-size: 12px;
+    border-radius: 10px;
+    white-space: nowrap;
+    cursor: pointer;
+    transform: translate(-50%, -50%);
+    z-index: 15;
+  }
+  .item {
+    background: #ecf0f1;
+    border-radius: 8px;
+    padding: 8px 35px 8px 10px;
+    margin-top: 8px;
+    position: relative;
+    user-select: none;
+    font-size: 14px;
+  }
+  .delete-btn {
+    position: absolute;
+    top: 50%;
+    right: 8px;
+    transform: translateY(-50%);
+    background: #e74c3c;
+    color: white;
+    border: none;
+    border-radius: 10px;
+    cursor: pointer;
+    padding: 1px 5px;
+    font-size: 10px;
+    line-height: 1;
+    user-select: none;
+    transition: background-color 0.2s ease;
+    width: 18px;
+    height: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .delete-btn:hover {
+    background: #c0392b;
+  }
+  @media (min-width: 768px) {
+    body { padding: 20px; }
+    h1 { font-size: 28px; }
+    .board { flex-direction: row; gap: 20px; }
+    .column { padding: 20px; }
+    .column h2 { font-size: 20px; }
+    select, textarea, button { font-size: 16px; }
+    .name-input { font-size: 14px; min-width: 80px; }
+    .name-label { font-size: 14px; padding: 2px 8px; }
+    .item { padding: 10px 40px 10px 10px; font-size: 16px; }
+    .delete-btn { font-size: 12px; width: 22px; height: 22px; }
+  }
+</style>
+</head>
+<body>
+
+<h1>🏅 2-5스포츠리그 작전판</h1>
+<div class="board">
+  <div class="column">
+    <h2>👆🏿 종목별 작전</h2>
+    <div id="strategy-list"></div>
+    <div class="add-form">
+      <select id="strategy-title">
+        <option value="농구">농구</option>
+        <option value="배구">배구</option>
+        <option value="킨볼">킨볼</option>
+        <option value="축구">축구</option>
+      </select>
+      <textarea id="strategy-content" placeholder="작전 내용"></textarea>
+      <button id="strategy-add-btn">➕ 추가</button>
+    </div>
+  </div>
+
+  <div class="column">
+    <h2>🤓 선수 배치</h2>
+    <div id="player-list"></div>
+    <div class="add-form">
+      <select id="sport-select">
+        <option value="농구">농구</option>
+        <option value="배구">배구</option>
+        <option value="킨볼">킨볼</option>
+        <option value="축구">축구</option>
+      </select>
+      <div id="diagram-container"></div>
+      <button id="player-save-btn">➕ 저장</button>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js";
+  import { getDatabase, ref, set, onValue, push, remove } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-database.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyChxi0iCnMhfzZH84bsZpAu6dwu3yfpW44",
+    authDomain: "sports-league-c76be.firebaseapp.com",
+    databaseURL: "https://sports-league-c76be-default-rtdb.firebaseio.com",
+    projectId: "sports-league-c76be",
+    storageBucket: "sports-league-c76be.appspot.com",
+    messagingSenderId: "881812570991",
+    appId: "1:881812570991:web:9f89f556d2075138251e9a"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const database = getDatabase(app);
+
+  const STORAGE_STRATEGY = 'strategies';
+  const STORAGE_PLAYER = 'players';
+  let playerPositions = [];
+  let currentSport = '농구'; // 초기값 명시
+  let currentInput = null;
+  let editingIndex = null;
+  let svg = null;
+
+  window.onload = () => {
+    console.log('Window loaded, initializing...');
+    const sportSelect = document.getElementById('sport-select');
+    if (sportSelect) {
+      currentSport = sportSelect.value;
+      console.log('Initial sport:', currentSport);
+    } else {
+      console.error('Sport select element not found');
+    }
+    loadStrategies();
+    loadPlayers();
+    setupEventListeners();
+    changeDiagram(); // 즉시 다이어그램 렌더링
+  };
+
+  function setupEventListeners() {
+    document.getElementById('strategy-add-btn').addEventListener('click', () => {
+      addItem('strategy');
+    });
+    document.getElementById('player-save-btn').addEventListener('click', () => {
+      savePlayers();
+    });
+    document.getElementById('sport-select').addEventListener('change', () => {
+      currentSport = document.getElementById('sport-select').value;
+      console.log('Sport changed to:', currentSport);
+      clearInputs();
+      loadPlayers();
+      changeDiagram();
+    });
+  }
+
+  function addItem(type) {
+    if (type === 'strategy') {
+      const title = document.getElementById('strategy-title').value;
+      const content = document.getElementById('strategy-content').value.trim();
+      if (!content) return alert('작전 내용을 입력해주세요.');
+      const newStrategyRef = push(ref(database, 'strategies'));
+      set(newStrategyRef, { title, content });
+      document.getElementById('strategy-content').value = '';
+      loadStrategies();
+    }
+  }
+
+  function loadStrategies() {
+    const container = document.getElementById('strategy-list');
+    container.innerHTML = '';
+    onValue(ref(database, 'strategies'), (snapshot) => {
+      console.log('Loading strategies:', snapshot.val());
+      const strategies = [];
+      snapshot.forEach((childSnapshot) => {
+        strategies.push({ key: childSnapshot.key, ...childSnapshot.val() });
+      });
+      strategies.forEach((item) => {
+        const div = document.createElement('div');
+        div.className = 'item';
+        div.innerHTML = `<strong>${item.title}</strong><br>${item.content}`;
+        const btn = document.createElement('button');
+        btn.className = 'delete-btn';
+        btn.innerText = '×';
+        btn.title = '삭제';
+        btn.onclick = () => {
+          remove(ref(database, `strategies/${item.key}`));
+          loadStrategies(); // 삭제 후 리스트 갱신
+        };
+        div.appendChild(btn);
+        container.appendChild(div);
+      });
+    }, (error) => {
+      console.error('Error loading strategies:', error);
+    });
+  }
+
+  function loadPlayers() {
+    const container = document.getElementById('player-list');
+    container.innerHTML = '';
+    onValue(ref(database, `players/${currentSport}`), (snapshot) => {
+      console.log('Loading players for', currentSport, ':', snapshot.val());
+      playerPositions = snapshot.val() || [];
+      playerPositions.forEach((item, i) => {
+        const div = document.createElement('div');
+        div.className = 'item';
+        div.textContent = item.name;
+        const btn = document.createElement('button');
+        btn.className = 'delete-btn';
+        btn.innerText = '×';
+        btn.title = '삭제';
+        btn.onclick = () => {
+          playerPositions.splice(i, 1);
+          set(ref(database, `players/${currentSport}`), playerPositions)
+            .then(() => loadPlayers()) // 성공 시 UI 갱신
+            .catch((error) => console.error('Error deleting player:', error));
+        };
+        div.appendChild(btn);
+        container.appendChild(div);
+      });
+      changeDiagram();
+    }, (error) => {
+      console.error('Error loading players:', error);
+    });
+  }
+
+  function clearInputs() {
+    if (currentInput) {
+      currentInput.remove();
+      currentInput = null;
+      editingIndex = null;
+    }
+    changeDiagram();
+  }
+
+  function changeDiagram() {
+    const container = document.getElementById('diagram-container');
+    if (!container) {
+      console.error('Diagram container not found');
+      return;
+    }
+    const existingInput = container.querySelector('.name-input');
+    const existingLabels = Array.from(container.querySelectorAll('.name-label'));
+
+    const existingSvg = container.querySelector('svg');
+    if (existingSvg) existingSvg.remove();
+
+    svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('viewBox', '0 0 600 400');
+    svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+    svg.style.border = '1px solid #333';
+    svg.style.background = '#f0f0f0';
+    container.appendChild(svg);
+    console.log('SVG created for sport:', currentSport);
+
+    const debugRect = document.createElementNS(svg.namespaceURI, 'rect');
+    debugRect.setAttribute('x', 0);
+    debugRect.setAttribute('y', 0);
+    debugRect.setAttribute('width', 600);
+    debugRect.setAttribute('height', 400);
+    debugRect.setAttribute('fill', '#ccc');
+    svg.appendChild(debugRect);
+
+    function createRect(x, y, w, h, color, stroke = '#333', strokeWidth = 2) {
+      const rect = document.createElementNS(svg.namespaceURI, 'rect');
+      rect.setAttribute('x', x);
+      rect.setAttribute('y', y);
+      rect.setAttribute('width', w);
+      rect.setAttribute('height', h);
+      rect.setAttribute('fill', color);
+      rect.setAttribute('stroke', stroke);
+      rect.setAttribute('stroke-width', strokeWidth);
+      return rect;
+    }
+    function createCircle(cx, cy, r, color, stroke = '#333', strokeWidth = 2, fillOpacity = 1) {
+      const circle = document.createElementNS(svg.namespaceURI, 'circle');
+      circle.setAttribute('cx', cx);
+      circle.setAttribute('cy', cy);
+      circle.setAttribute('r', r);
+      circle.setAttribute('fill', color);
+      circle.setAttribute('stroke', stroke);
+      circle.setAttribute('stroke-width', strokeWidth);
+      circle.setAttribute('fill-opacity', fillOpacity);
+      return circle;
+    }
+    function createLine(x1, y1, x2, y2, color = '#333', strokeWidth = 2) {
+      const line = document.createElementNS(svg.namespaceURI, 'line');
+      line.setAttribute('x1', x1);
+      line.setAttribute('y1', y1);
+      line.setAttribute('x2', x2);
+      line.setAttribute('y2', y2);
+      line.setAttribute('stroke', color);
+      line.setAttribute('stroke-width', strokeWidth);
+      return line;
+    }
+
+    switch (currentSport) {
+      case '농구':
+        svg.appendChild(createRect(50, 50, 500, 300, '#f39c12', '#b9770e', 3));
+        svg.appendChild(createLine(300, 50, 300, 350, '#b9770e', 3));
+        svg.appendChild(createCircle(300, 200, 50, 'none', '#b9770e', 3));
+        svg.appendChild(createRect(50, 170, 20, 60, '#d35400', '#b9770e', 3));
+        svg.appendChild(createRect(530, 170, 20, 60, '#d35400', '#b9770e', 3));
+        break;
+      case '배구':
+        svg.appendChild(createRect(50, 50, 500, 300, '#4caf50', '#1c5980', 3));
+        svg.appendChild(createLine(300, 50, 300, 350, '#2f2f2f', 3));
+        svg.appendChild(createLine(200, 50, 200, 350, '#ffffff', 2));
+        svg.appendChild(createLine(400, 50, 400, 350, '#ffffff', 2));
+        svg.appendChild(createLine(50, 50, 550, 50, '#ffffff', 3));
+        svg.appendChild(createLine(50, 350, 550, 350, '#ffffff', 3));
+        svg.appendChild(createLine(50, 50, 50, 350, '#ffffff', 3));
+        svg.appendChild(createLine(550, 50, 550, 350, '#ffffff', 3));
+        break;
+      case '킨볼':
+        svg.appendChild(createRect(50, 50, 500, 300, '#8a7862', '#2c3e50', 3));
+        break;
+      case '축구':
+        svg.appendChild(createRect(50, 50, 500, 300, '#27ae60', '#1e8449', 3));
+        svg.appendChild(createLine(300, 50, 300, 350, '#dff0d8', 3));
+        svg.appendChild(createRect(50, 125, 100, 150, '#2ecc71', '#27ae60', 3));
+        svg.appendChild(createRect(450, 125, 100, 150, '#2ecc71', '#27ae60', 3));
+        svg.appendChild(createRect(50, 170, 20, 60, '#145a32', '#1e8449', 3));
+        svg.appendChild(createRect(530, 170, 20, 60, '#145a32', '#1e8449', 3));
+        svg.appendChild(createCircle(300, 200, 50, 'none', '#dff0d8', 3));
+        break;
+    }
+
+    existingLabels.forEach(label => label.remove());
+
+    playerPositions.forEach((pos, index) => {
+      const label = document.createElement('div');
+      label.className = 'name-label';
+      label.textContent = pos.name;
+      label.style.left = `${(pos.x / 600) * 100}%`;
+      label.style.top = `${(pos.y / 400) * 100}%`;
+      label.dataset.index = index; // 인덱스 저장
+      label.ontouchstart = (e) => {
+        e.preventDefault();
+        openNameInput(pos.x, pos.y, index);
+      };
+      label.onclick = () => {
+        openNameInput(pos.x, pos.y, index);
+      };
+      container.appendChild(label);
+    });
+
+    if (existingInput) {
+      container.appendChild(existingInput);
+    }
+
+    function handleInteraction(e) {
+      e.preventDefault();
+      const rect = svg.getBoundingClientRect();
+      let x, y;
+      if (e.type === 'touchstart' && e.touches && e.touches.length > 0) {
+        x = (e.touches[0].clientX - rect.left) * (600 / rect.width);
+        y = (e.touches[0].clientY - rect.top) * (400 / rect.height);
+      } else if (e.type === 'click') {
+        x = (e.clientX - rect.left) * (600 / rect.width);
+        y = (e.clientY - rect.top) * (400 / rect.height);
+      } else {
+        return;
+      }
+      openNameInput(x, y);
+    }
+
+    svg.addEventListener('click', handleInteraction);
+    svg.addEventListener('touchstart', handleInteraction);
+  }
+
+  function openNameInput(x, y, index = null) {
+    clearInputs();
+    const container = document.getElementById('diagram-container');
+    currentInput = document.createElement('input');
+    currentInput.type = 'text';
+    currentInput.placeholder = '이름 입력';
+    currentInput.className = 'name-input';
+    currentInput.style.left = `${(x / 600) * 100}%`;
+    currentInput.style.top = `${(y / 400) * 100}%`;
+    currentInput.style.position = 'absolute';
+    editingIndex = index;
+
+    if (index !== null) {
+      currentInput.value = playerPositions[index].name;
+    }
+
+    currentInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        saveTemporaryInput();
+      }
+      if (e.key === 'Escape') {
+        clearInputs();
+      }
+    });
+    currentInput.addEventListener('blur', () => {
+      saveTemporaryInput();
+    });
+
+    container.appendChild(currentInput);
+    currentInput.focus();
+  }
+
+  function saveTemporaryInput() {
+    const val = currentInput.value.trim();
+    if (val) {
+      const rect = svg.getBoundingClientRect();
+      const x = (parseFloat(currentInput.style.left) / 100) * 600;
+      const y = (parseFloat(currentInput.style.top) / 100) * 400;
+      if (editingIndex !== null) {
+        playerPositions[editingIndex] = { name: val, x, y };
+      } else {
+        playerPositions.push({ name: val, x, y });
+      }
+    } else if (editingIndex !== null && !val) {
+      playerPositions.splice(editingIndex, 1);
+    }
+    clearInputs();
+    changeDiagram(); // 변경된 내용을 즉시 반영
+  }
+
+  function savePlayers() {
+    if (playerPositions.length === 0) {
+      alert('배치도 위에 이름을 먼저 추가해주세요.');
+      return;
+    }
+    const playersRef = ref(database, `players/${currentSport}`);
+    set(playersRef, playerPositions.map(p => ({ name: p.name, x: p.x, y: p.y })))
+      .then(() => {
+        alert('선수 배치 저장 완료!');
+        loadPlayers();
+        changeDiagram(); // 저장 후 UI 갱신
+      })
+      .catch((error) => console.error('Error saving players:', error));
+  }
+</script>
+
+</body>
+</html>
