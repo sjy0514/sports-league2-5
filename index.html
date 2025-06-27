@@ -34,6 +34,28 @@
   .column h2 {
     margin-top: 0;
     font-size: 18px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .gender-toggle {
+    display: flex;
+    gap: 5px;
+  }
+  .gender-toggle button {
+    background: #3498db;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    padding: 5px 10px;
+    cursor: pointer;
+    font-size: 14px;
+  }
+  .gender-toggle button.active {
+    background: #2ecc71;
+  }
+  .gender-toggle button:hover {
+    background: #2980b9;
   }
   .add-form {
     margin-top: 10px;
@@ -164,7 +186,12 @@
   </div>
 
   <div class="column">
-    <h2>🤓 선수 배치</h2>
+    <h2>🤓 선수 배치
+      <div class="gender-toggle">
+        <button id="male-btn" class="active">남자</button>
+        <button id="female-btn">여자</button>
+      </div>
+    </h2>
     <div id="player-list"></div>
     <div class="add-form">
       <select id="sport-select">
@@ -198,8 +225,10 @@
 
   const STORAGE_STRATEGY = 'strategies';
   const STORAGE_PLAYER = 'players';
-  let playerPositions = [];
+  let malePlayers = [];
+  let femalePlayers = [];
   let currentSport = '농구'; // 초기값 명시
+  let currentGender = 'male'; // 초기 성별
   let currentInput = null;
   let editingIndex = null;
   let svg = null;
@@ -233,6 +262,27 @@
       loadPlayers();
       changeDiagram();
     });
+    document.getElementById('male-btn').addEventListener('click', () => {
+      if (currentGender !== 'male') {
+        currentGender = 'male';
+        updateGenderButtons();
+        loadPlayers();
+        changeDiagram();
+      }
+    });
+    document.getElementById('female-btn').addEventListener('click', () => {
+      if (currentGender !== 'female') {
+        currentGender = 'female';
+        updateGenderButtons();
+        loadPlayers();
+        changeDiagram();
+      }
+    });
+  }
+
+  function updateGenderButtons() {
+    document.getElementById('male-btn').classList.toggle('active', currentGender === 'male');
+    document.getElementById('female-btn').classList.toggle('active', currentGender === 'female');
   }
 
   function addItem(type) {
@@ -275,7 +325,7 @@
       btn.title = '삭제';
       btn.onclick = () => {
         remove(ref(database, `strategies/${item.key}`))
-          .then(() => loadStrategies()) // 삭제 후 갱신
+          .then(() => loadStrategies())
           .catch((error) => console.error('Error deleting strategy:', error));
       };
       div.appendChild(btn);
@@ -286,21 +336,27 @@
   function loadPlayers() {
     const container = document.getElementById('player-list');
     container.innerHTML = '';
-    onValue(ref(database, `players/${currentSport}`), (snapshot) => {
-      console.log('Loading players for', currentSport, ':', snapshot.val());
-      playerPositions = snapshot.val() ? Object.values(snapshot.val()) : [];
-      console.log('playerPositions after load:', playerPositions);
-      renderPlayerList();
+    const playersRef = ref(database, `players/${currentGender}/${currentSport}`);
+    onValue(playersRef, (snapshot) => {
+      console.log('Loading players for', currentGender, currentSport, ':', snapshot.val());
+      const positions = snapshot.val() ? Object.values(snapshot.val()) : [];
+      if (currentGender === 'male') {
+        malePlayers = positions;
+        renderPlayerList(malePlayers);
+      } else {
+        femalePlayers = positions;
+        renderPlayerList(femalePlayers);
+      }
       changeDiagram();
     }, (error) => {
       console.error('Error loading players:', error);
     });
   }
 
-  function renderPlayerList() {
+  function renderPlayerList(players) {
     const container = document.getElementById('player-list');
     container.innerHTML = '';
-    playerPositions.forEach((item, i) => {
+    players.forEach((item, i) => {
       const div = document.createElement('div');
       div.className = 'item';
       div.textContent = item.name;
@@ -309,10 +365,17 @@
       btn.innerText = '×';
       btn.title = '삭제';
       btn.onclick = () => {
-        playerPositions.splice(i, 1);
-        set(ref(database, `players/${currentSport}`), playerPositions)
+        const updatedPlayers = [...players];
+        updatedPlayers.splice(i, 1);
+        set(ref(database, `players/${currentGender}/${currentSport}`), updatedPlayers)
           .then(() => {
-            renderPlayerList(); // 즉시 UI 갱신
+            if (currentGender === 'male') {
+              malePlayers = updatedPlayers;
+              renderPlayerList(malePlayers);
+            } else {
+              femalePlayers = updatedPlayers;
+              renderPlayerList(femalePlayers);
+            }
             changeDiagram();
           })
           .catch((error) => console.error('Error deleting player:', error));
@@ -426,7 +489,8 @@
 
     existingLabels.forEach(label => label.remove());
 
-    playerPositions.forEach((pos, index) => {
+    const currentPlayers = currentGender === 'male' ? malePlayers : femalePlayers;
+    currentPlayers.forEach((pos, index) => {
       const label = document.createElement('div');
       label.className = 'name-label';
       label.textContent = pos.name;
@@ -479,8 +543,9 @@
     currentInput.style.position = 'absolute';
     editingIndex = index;
 
+    const currentPlayers = currentGender === 'male' ? malePlayers : femalePlayers;
     if (index !== null) {
-      currentInput.value = playerPositions[index].name;
+      currentInput.value = currentPlayers[index].name;
     }
 
     currentInput.addEventListener('keydown', (e) => {
@@ -505,32 +570,35 @@
       const rect = svg.getBoundingClientRect();
       const x = (parseFloat(currentInput.style.left) / 100) * 600;
       const y = (parseFloat(currentInput.style.top) / 100) * 400;
-      const existing = playerPositions.find(p => p.name === val && p.x === x && p.y === y);
+      const currentPlayers = currentGender === 'male' ? malePlayers : femalePlayers;
+      const existing = currentPlayers.find(p => p.name === val && p.x === x && p.y === y);
       if (!existing) {
         if (editingIndex !== null) {
-          playerPositions[editingIndex] = { name: val, x, y };
+          currentPlayers[editingIndex] = { name: val, x, y };
         } else {
-          playerPositions.push({ name: val, x, y });
+          currentPlayers.push({ name: val, x, y });
         }
       }
     } else if (editingIndex !== null && !val) {
-      playerPositions.splice(editingIndex, 1);
+      const currentPlayers = currentGender === 'male' ? malePlayers : femalePlayers;
+      currentPlayers.splice(editingIndex, 1);
     }
     clearInputs();
-    changeDiagram(); // 변경된 내용을 즉시 반영
-    savePlayers(); // 즉시 저장
+    changeDiagram();
+    savePlayers();
   }
 
   function savePlayers() {
-    if (playerPositions.length === 0) {
+    const currentPlayers = currentGender === 'male' ? malePlayers : femalePlayers;
+    if (currentPlayers.length === 0) {
       alert('배치도 위에 이름을 먼저 추가해주세요.');
       return;
     }
-    const playersRef = ref(database, `players/${currentSport}`);
-    set(playersRef, playerPositions.map(p => ({ name: p.name, x: p.x, y: p.y })))
+    const playersRef = ref(database, `players/${currentGender}/${currentSport}`);
+    set(playersRef, currentPlayers.map(p => ({ name: p.name, x: p.x, y: p.y })))
       .then(() => {
-        console.log('Players saved:', playerPositions);
-        loadPlayers(); // 저장 후 최신 데이터 로드
+        console.log(`${currentGender} players saved for ${currentSport}:`, currentPlayers);
+        loadPlayers();
         changeDiagram();
       })
       .catch((error) => console.error('Error saving players:', error));
